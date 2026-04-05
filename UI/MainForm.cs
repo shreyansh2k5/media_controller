@@ -1,11 +1,9 @@
 // File: UI/MainForm.cs
 using System;
 using System.Drawing;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using MiniFlyout.Core;
-using MiniFlyout.Infrastructure;
 
 namespace MiniFlyout.UI
 {
@@ -16,18 +14,13 @@ namespace MiniFlyout.UI
         private System.Windows.Forms.Timer _topMostEnforcer = null!;
         private System.Windows.Forms.Timer _uiUpdater = null!;
         
-        // UI Components
         private StyledButton _playBtn = null!;
         private Label _titleLabel = null!;
         private Label _artistLabel = null!;
         private PictureBox _thumbnailBox = null!;
         
-        // State tracking
         private string _lastTitle = "";
-
-        // Native Windows 11 API for smooth, built-in rounded corners
-        [DllImport("dwmapi.dll")]
-        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+        private bool _isVisible = true;
 
         public MainForm(IMediaService mediaService)
         {
@@ -39,7 +32,6 @@ namespace MiniFlyout.UI
             EnableDynamicUpdater();
         }
 
-        // Prevent the overlay from stealing focus when clicked or updated
         protected override CreateParams CreateParams
         {
             get
@@ -52,16 +44,14 @@ namespace MiniFlyout.UI
 
         private void InitUI()
         {
-            // Ultra-slim layout to fit perfectly INSIDE the Windows 11 taskbar
             Width = 340; 
-            Height = 44; // Taskbar is 48px, this gives a sleek 2px margin top and bottom
+            Height = 44;
             FormBorderStyle = FormBorderStyle.None;
             TopMost = true;
             ShowInTaskbar = false;
             BackColor = Color.FromArgb(10, 10, 10); 
             DoubleBuffered = true; 
 
-            // Calculate precise center INSIDE the taskbar bounds
             var screen = Screen.PrimaryScreen!;
             var bounds = screen.Bounds;
             var workingArea = screen.WorkingArea;
@@ -71,23 +61,21 @@ namespace MiniFlyout.UI
                 : bounds.Height - Height - 2;
 
             StartPosition = FormStartPosition.Manual;
-            Location = new Point(0, yPos); // Flush to the left edge
+            Location = new Point(0, yPos);
 
-            // 1. Master Grid Layout
             var mainLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 BackColor = Color.Transparent,
                 RowCount = 1,
                 ColumnCount = 3,
-                Padding = new Padding(8, 4, 8, 4) // Tight, native-feeling padding
+                Padding = new Padding(8, 4, 8, 4)
             };
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 36f)); // Thumbnail Area
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f)); // Text Area
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96f)); // Buttons Area
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 36f)); 
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f)); 
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96f)); 
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f)); 
 
-            // 2. Thumbnail PictureBox
             _thumbnailBox = new PictureBox
             {
                 Dock = DockStyle.Fill,
@@ -96,7 +84,6 @@ namespace MiniFlyout.UI
                 Margin = new Padding(0, 0, 8, 0)
             };
 
-            // 3. Text Container
             var textLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -115,7 +102,7 @@ namespace MiniFlyout.UI
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.BottomLeft,
                 AutoEllipsis = true,
-                Margin = new Padding(0, 0, 0, 1) // Nudge to center visually
+                Margin = new Padding(0, 0, 0, 1)
             };
             
             _artistLabel = new Label
@@ -131,7 +118,6 @@ namespace MiniFlyout.UI
             textLayout.Controls.Add(_titleLabel, 0, 0);
             textLayout.Controls.Add(_artistLabel, 0, 1);
 
-            // 4. Buttons Container
             var buttonLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -145,7 +131,6 @@ namespace MiniFlyout.UI
             buttonLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
             buttonLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
-            // Override button defaults to scale flawlessly into the new slim taskbar height
             var prev = new StyledButton("\uE892") { Anchor = AnchorStyles.None, Margin = new Padding(0), Size = new Size(28, 28), Font = new Font("Segoe Fluent Icons", 11f) };
             _playBtn = new StyledButton("\uE768") { Anchor = AnchorStyles.None, Margin = new Padding(0), Size = new Size(28, 28), Font = new Font("Segoe Fluent Icons", 11f) }; 
             var next = new StyledButton("\uE893") { Anchor = AnchorStyles.None, Margin = new Padding(0), Size = new Size(28, 28), Font = new Font("Segoe Fluent Icons", 11f) };
@@ -168,37 +153,8 @@ namespace MiniFlyout.UI
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            ApplyAcrylicBlur();
-
-            // Apply Native Windows 11 Smooth Corners (DWMWCP_ROUNDSMALL = 3)
-            // This replaces the jagged Region method with flawless native UI rendering
-            int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
-            int cornerPref = 3; 
-            DwmSetWindowAttribute(this.Handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref cornerPref, sizeof(int));
-        }
-
-        private void ApplyAcrylicBlur()
-        {
-            var accent = new NativeMethods.AccentPolicy
-            {
-                AccentState = NativeMethods.ACCENT_ENABLE_ACRYLICBLURBEHIND,
-                // Softened the darkness (0x40 instead of 0x99) so it blends seamlessly into the taskbar
-                GradientColor = unchecked((int)0x40000000)
-            };
-
-            int accentStructSize = Marshal.SizeOf(accent);
-            IntPtr accentPtr = Marshal.AllocHGlobal(accentStructSize);
-            Marshal.StructureToPtr(accent, accentPtr, false);
-
-            var data = new NativeMethods.WindowCompositionAttributeData
-            {
-                Attribute = NativeMethods.WCA_ACCENT_POLICY,
-                SizeOfData = accentStructSize,
-                Data = accentPtr
-            };
-
-            NativeMethods.SetWindowCompositionAttribute(this.Handle, ref data);
-            Marshal.FreeHGlobal(accentPtr);
+            WindowEffects.ApplyNativeRoundedCorners(this.Handle);
+            WindowEffects.EnableAmbientAcrylic(this.Handle, Color.Black, 0x40);
         }
 
         private void EnableDrag()
@@ -215,23 +171,13 @@ namespace MiniFlyout.UI
         private void HandleMouseMove(object? sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
-            {
-                Location = new Point(
-                    Location.X + e.X - _dragStart.X,
-                    Location.Y + e.Y - _dragStart.Y
-                );
-            }
+                Location = new Point(Location.X + e.X - _dragStart.X, Location.Y + e.Y - _dragStart.Y);
         }
 
         private void EnableTopMostEnforcer()
         {
             _topMostEnforcer = new System.Windows.Forms.Timer { Interval = 2000 };
-            _topMostEnforcer.Tick += (s, e) => 
-            {
-                const uint SWP_NOACTIVATE = 0x0010;
-                NativeMethods.SetWindowPos(this.Handle, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0, 
-                    NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | SWP_NOACTIVATE);
-            };
+            _topMostEnforcer.Tick += (s, e) => WindowEffects.EnforceTopMost(this.Handle);
             _topMostEnforcer.Start();
         }
 
@@ -248,9 +194,20 @@ namespace MiniFlyout.UI
             var track = await _mediaService.GetCurrentTrackAsync();
             if (track != null)
             {
+                // OPTIMIZATION: Check frequently if actively playing, check slowly if paused
+                _uiUpdater.Interval = track.IsPlaying ? 1000 : 3000;
+
+                // Make sure widget is visible
+                if (!_isVisible)
+                {
+                    WindowEffects.ShowOverlay(this.Handle);
+                    _isVisible = true;
+                }
+
                 string currentIcon = track.IsPlaying ? "\uE769" : "\uE768";
                 if (_playBtn.Text != currentIcon) _playBtn.Text = currentIcon;
 
+                // Only perform heavy UI/Image work if the track actually changes
                 if (_lastTitle != track.Title)
                 {
                     _lastTitle = track.Title;
@@ -259,25 +216,51 @@ namespace MiniFlyout.UI
 
                     if (track.ThumbnailData != null)
                     {
-                        var oldImage = _thumbnailBox.Image;
-                        var ms = new System.IO.MemoryStream(track.ThumbnailData);
-                        _thumbnailBox.Image = Image.FromStream(ms);
-                        oldImage?.Dispose();
+                        using (var ms = new System.IO.MemoryStream(track.ThumbnailData))
+                        using (var tempImage = Image.FromStream(ms))
+                        {
+                            var oldImage = _thumbnailBox.Image;
+                            
+                            // OPTIMIZATION: Clone the image so the memory stream can safely close
+                            _thumbnailBox.Image = new Bitmap(tempImage); 
+                            oldImage?.Dispose(); // Free memory of previous artwork instantly
+
+                            // Generate the ambient background tint
+                            var ambientColor = ImageUtils.GetAmbientGlowColor(_thumbnailBox.Image);
+                            WindowEffects.EnableAmbientAcrylic(this.Handle, ambientColor, 0x55); 
+                        }
                     }
                     else
                     {
-                        _thumbnailBox.Image = null;
+                        ClearMediaData();
                     }
                 }
             }
             else
             {
-                _playBtn.Text = "\uE768";
-                _titleLabel.Text = "No Media";
-                _artistLabel.Text = "";
-                _thumbnailBox.Image = null;
-                _lastTitle = "";
+                // No active media session
+                _uiUpdater.Interval = 3000; // Drop CPU usage to minimum
+                
+                if (_isVisible)
+                {
+                    WindowEffects.HideOverlay(this.Handle); // Hide smoothly without breaking focus
+                    _isVisible = false;
+                    ClearMediaData();
+                }
             }
+        }
+
+        private void ClearMediaData()
+        {
+            _lastTitle = "";
+            _playBtn.Text = "\uE768";
+            _titleLabel.Text = "No Media";
+            _artistLabel.Text = "";
+            
+            _thumbnailBox.Image?.Dispose();
+            _thumbnailBox.Image = null;
+            
+            WindowEffects.EnableAmbientAcrylic(this.Handle, Color.Black, 0x40);
         }
     }
 }
