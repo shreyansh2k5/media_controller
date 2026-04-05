@@ -57,8 +57,8 @@ namespace MiniFlyout.UI
                 : bounds.Height - Height - 5;
 
             StartPosition = FormStartPosition.Manual;
-            // X = 160 leaves room so it doesn't cover the Start Button or Widgets
-            Location = new Point(160, yPos);
+            // Positioned strictly on the leftmost edge of the screen
+            Location = new Point(0, yPos);
 
             _trackInfoToolTip = new ToolTip
             {
@@ -68,29 +68,33 @@ namespace MiniFlyout.UI
                 UseFading = true
             };
 
-            // Buttons Container
-            var buttonPanel = new FlowLayoutPanel
+            // Buttons Container - Switched to TableLayoutPanel for perfect 1/3 symmetry
+            var buttonPanel = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 BackColor = Color.Transparent,
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
-                Padding = new Padding(6, 2, 0, 0) // Compact alignment padding
+                RowCount = 1,
+                ColumnCount = 3,
+                Padding = new Padding(0)
             };
+            buttonPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
+            buttonPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
+            buttonPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
 
             // Initialize controls with Segoe Fluent Icons: Prev (\uE892), Play/Pause (\uE768), Next (\uE893)
-            var prev = new StyledButton("\uE892");
-            var play = new StyledButton("\uE768");
-            var next = new StyledButton("\uE893");
+            // Anchor = None ensures they sit dead-center inside their grid columns
+            var prev = new StyledButton("\uE892") { Anchor = AnchorStyles.None, Margin = new Padding(0) };
+            var play = new StyledButton("\uE768") { Anchor = AnchorStyles.None, Margin = new Padding(0) };
+            var next = new StyledButton("\uE893") { Anchor = AnchorStyles.None, Margin = new Padding(0) };
 
             // Wire up the abstract media service
             prev.Click += (s, e) => _mediaService.Previous();
             play.Click += (s, e) => _mediaService.PlayPause();
             next.Click += (s, e) => _mediaService.Next();
 
-            buttonPanel.Controls.Add(prev);
-            buttonPanel.Controls.Add(play);
-            buttonPanel.Controls.Add(next);
+            buttonPanel.Controls.Add(prev, 0, 0);
+            buttonPanel.Controls.Add(play, 1, 0);
+            buttonPanel.Controls.Add(next, 2, 0);
 
             Controls.Add(buttonPanel);
         }
