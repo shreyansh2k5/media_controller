@@ -41,7 +41,6 @@ Build from Source
 Clone the repository:
 
 git clone [https://github.com/yourusername/media_controller.git](https://github.com/yourusername/media_controller.git)
-cd media_controller/MiniFlyout
 
 
 Build and run the project using the .NET CLI:
