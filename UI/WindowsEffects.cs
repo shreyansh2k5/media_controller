@@ -19,10 +19,33 @@ namespace MiniFlyout.UI
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
+        // --- NEW API CALLS FOR FULLSCREEN DETECTION ---
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetDesktopWindow();
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetShellWindow();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool GetWindowRect(IntPtr hwnd, out RECT lpRect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+        // ----------------------------------------------
+
         private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         private const uint SWP_NOMOVE = 0x0002;
         private const uint SWP_NOSIZE = 0x0001;
-        private const uint SWP_NOACTIVATE = 0x0010; // Critical: Prevents stealing focus from games
+        private const uint SWP_NOACTIVATE = 0x0010;
 
         [StructLayout(LayoutKind.Sequential)]
         private struct WindowCompositionAttributeData
@@ -45,8 +68,7 @@ namespace MiniFlyout.UI
         {
             var accent = new AccentPolicy
             {
-                AccentState = 4, // ACCENT_ENABLE_ACRYLICBLURBEHIND
-                // DWM expects colors in ABGR format. Wrapped in unchecked to prevent silent overflows
+                AccentState = 4, 
                 GradientColor = unchecked((opacity << 24) | (ambientColor.B << 16) | (ambientColor.G << 8) | ambientColor.R)
             };
 
@@ -56,7 +78,7 @@ namespace MiniFlyout.UI
 
             var data = new WindowCompositionAttributeData
             {
-                Attribute = 19, // WCA_ACCENT_POLICY
+                Attribute = 19, 
                 SizeOfData = accentStructSize,
                 Data = accentPtr
             };
@@ -68,7 +90,7 @@ namespace MiniFlyout.UI
         public static void ApplyNativeRoundedCorners(IntPtr handle)
         {
             int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
-            int cornerPref = 3; // DWMWCP_ROUNDSMALL
+            int cornerPref = 3; 
             DwmSetWindowAttribute(handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref cornerPref, sizeof(int));
         }
 
@@ -77,8 +99,43 @@ namespace MiniFlyout.UI
             SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
 
-        public static void ShowOverlay(IntPtr handle) => ShowWindow(handle, 4); // SW_SHOWNOACTIVATE
+        public static void ShowOverlay(IntPtr handle) => ShowWindow(handle, 4); 
         
-        public static void HideOverlay(IntPtr handle) => ShowWindow(handle, 0); // SW_HIDE
+        public static void HideOverlay(IntPtr handle) => ShowWindow(handle, 0); 
+
+        // --- THE SMART FULLSCREEN DETECTOR ---
+        public static bool IsForegroundFullScreen()
+        {
+            try
+            {
+                IntPtr foregroundWindow = GetForegroundWindow();
+                if (foregroundWindow == IntPtr.Zero) return false;
+
+                IntPtr desktopWindow = GetDesktopWindow();
+                IntPtr shellWindow = GetShellWindow();
+
+                // If the user is just staring at their empty desktop, it's not a full-screen app
+                if (foregroundWindow == desktopWindow || foregroundWindow == shellWindow)
+                    return false;
+
+                GetWindowRect(foregroundWindow, out RECT rect);
+                
+                var screen = System.Windows.Forms.Screen.FromHandle(foregroundWindow);
+
+                // If you have multiple monitors, we only want to hide the widget if the 
+                // full-screen app is playing on the Primary Screen (where the widget lives!)
+                if (!screen.Primary) return false;
+                
+                // Check if the focused window's dimensions perfectly match or exceed the screen boundaries
+                return (rect.Left <= screen.Bounds.Left &&
+                        rect.Top <= screen.Bounds.Top &&
+                        rect.Right >= screen.Bounds.Right &&
+                        rect.Bottom >= screen.Bounds.Bottom);
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }

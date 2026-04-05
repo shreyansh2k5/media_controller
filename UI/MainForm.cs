@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using MiniFlyout.Core;
+using MiniFlyout.Infrastructure; 
 
 namespace MiniFlyout.UI
 {
@@ -19,14 +20,20 @@ namespace MiniFlyout.UI
         private Label _artistLabel = null!;
         private PictureBox _thumbnailBox = null!;
         
+        private TrayManager _trayManager = null!; 
+        
         private string _lastTitle = "";
         private bool _isVisible = true;
+        private bool _hasActiveMedia = false; // NEW: Tracks if media is playing regardless of visibility
 
         public MainForm(IMediaService mediaService)
         {
             _mediaService = mediaService ?? throw new ArgumentNullException(nameof(mediaService));
             
             InitUI();
+            
+            _trayManager = new TrayManager(this); 
+            
             EnableDrag();
             EnableTopMostEnforcer();
             EnableDynamicUpdater();
@@ -37,14 +44,13 @@ namespace MiniFlyout.UI
             get
             {
                 CreateParams cp = base.CreateParams;
-                cp.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE
+                cp.ExStyle |= 0x08000000; 
                 return cp;
             }
         }
 
         private void InitUI()
         {
-            // 15% narrower and 5% taller
             Width = 290; 
             Height = 52;
             FormBorderStyle = FormBorderStyle.None;
@@ -70,14 +76,12 @@ namespace MiniFlyout.UI
                 BackColor = Color.Transparent,
                 RowCount = 1,
                 ColumnCount = 3,
-                // Reduced top/bottom padding to maximize vertical space for the thumbnail
                 Padding = new Padding(8, 2, 8, 2)
             };
             
-            // Increased width from 36f to 50f so the thumbnail isn't horizontally squished
             mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50f)); 
             mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f)); 
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86f)); // Scaled down for smaller width
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86f)); 
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f)); 
 
             _thumbnailBox = new PictureBox
@@ -135,7 +139,6 @@ namespace MiniFlyout.UI
             buttonLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
             buttonLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
-            // Scaled buttons down slightly (26x26) so they don't clip in the narrower UI
             var prev = new StyledButton("\uE892") { Anchor = AnchorStyles.None, Margin = new Padding(0), Size = new Size(26, 26), Font = new Font("Segoe Fluent Icons", 10.5f) };
             _playBtn = new StyledButton("\uE768") { Anchor = AnchorStyles.None, Margin = new Padding(0), Size = new Size(26, 26), Font = new Font("Segoe Fluent Icons", 10.5f) }; 
             var next = new StyledButton("\uE893") { Anchor = AnchorStyles.None, Margin = new Padding(0), Size = new Size(26, 26), Font = new Font("Segoe Fluent Icons", 10.5f) };
@@ -153,6 +156,15 @@ namespace MiniFlyout.UI
             mainLayout.Controls.Add(buttonLayout, 2, 0);
 
             Controls.Add(mainLayout);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _trayManager?.Dispose(); 
+            }
+            base.Dispose(disposing);
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -181,8 +193,31 @@ namespace MiniFlyout.UI
 
         private void EnableTopMostEnforcer()
         {
-            _topMostEnforcer = new System.Windows.Forms.Timer { Interval = 2000 };
-            _topMostEnforcer.Tick += (s, e) => WindowEffects.EnforceTopMost(this.Handle);
+            _topMostEnforcer = new System.Windows.Forms.Timer { Interval = 100 };
+            _topMostEnforcer.Tick += (s, e) => 
+            {
+                // SMART VISIBILITY CHECK
+                bool isFullScreen = WindowEffects.IsForegroundFullScreen();
+                bool shouldBeVisible = _hasActiveMedia && !isFullScreen;
+
+                // Handle fading in/out
+                if (shouldBeVisible && !_isVisible)
+                {
+                    WindowEffects.ShowOverlay(this.Handle);
+                    _isVisible = true;
+                }
+                else if (!shouldBeVisible && _isVisible)
+                {
+                    WindowEffects.HideOverlay(this.Handle);
+                    _isVisible = false;
+                }
+
+                // Only aggressively push to top if we are actually supposed to be looking at it
+                if (_isVisible)
+                {
+                    WindowEffects.EnforceTopMost(this.Handle);
+                }
+            };
             _topMostEnforcer.Start();
         }
 
@@ -199,20 +234,12 @@ namespace MiniFlyout.UI
             var track = await _mediaService.GetCurrentTrackAsync();
             if (track != null)
             {
-                // OPTIMIZATION: Check frequently if actively playing, check slowly if paused
+                _hasActiveMedia = true;
                 _uiUpdater.Interval = track.IsPlaying ? 1000 : 3000;
-
-                // Make sure widget is visible
-                if (!_isVisible)
-                {
-                    WindowEffects.ShowOverlay(this.Handle);
-                    _isVisible = true;
-                }
 
                 string currentIcon = track.IsPlaying ? "\uE769" : "\uE768";
                 if (_playBtn.Text != currentIcon) _playBtn.Text = currentIcon;
 
-                // Only perform heavy UI/Image work if the track actually changes
                 if (_lastTitle != track.Title)
                 {
                     _lastTitle = track.Title;
@@ -225,35 +252,28 @@ namespace MiniFlyout.UI
                         using (var tempImage = Image.FromStream(ms))
                         {
                             var oldImage = _thumbnailBox.Image;
-                            
-                            // OPTIMIZATION: Clone the image so the memory stream can safely close
                             _thumbnailBox.Image = new Bitmap(tempImage); 
-                            oldImage?.Dispose(); // Free memory of previous artwork instantly
+                            oldImage?.Dispose(); 
 
-                            // Generate the ambient background tint
                             var ambientColor = ImageUtils.GetAmbientGlowColor(_thumbnailBox.Image);
-                            
-                            // Boosted opacity to 0x99 (approx 60%) so the glow is heavily visible
                             WindowEffects.EnableAmbientAcrylic(this.Handle, ambientColor, 0x99); 
                         }
                     }
                     else
                     {
-                        ClearMediaData();
+                        // Media is playing but has no album art (e.g. basic MP3 or some Youtube videos)
+                        var oldImage = _thumbnailBox.Image;
+                        _thumbnailBox.Image = null;
+                        oldImage?.Dispose();
+                        WindowEffects.EnableAmbientAcrylic(this.Handle, Color.Black, 0x40);
                     }
                 }
             }
             else
             {
-                // No active media session
-                _uiUpdater.Interval = 3000; // Drop CPU usage to minimum
-                
-                if (_isVisible)
-                {
-                    WindowEffects.HideOverlay(this.Handle); // Hide smoothly without breaking focus
-                    _isVisible = false;
-                    ClearMediaData();
-                }
+                _hasActiveMedia = false;
+                _uiUpdater.Interval = 3000; 
+                ClearMediaData();
             }
         }
 

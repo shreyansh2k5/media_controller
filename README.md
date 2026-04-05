@@ -28,6 +28,12 @@ MiniFlyout will automatically appear on the bottom left of your taskbar, display
 
 If you close your media player, MiniFlyout will gracefully vanish until you need it again.
 
+Settings & Controls
+
+Start with Windows: Simply right-click anywhere on the widget and check "Start with Windows".
+
+Closing the App: Right-click anywhere on the widget and select "Exit MiniFlyout".
+
 🚀 Installation & Running (For Developers)
 
 Prerequisites
@@ -56,7 +62,7 @@ The project follows a pragmatic Clean Architecture approach to separate UI from 
 
 Core: Contains domain models (TrackInfo) and interfaces (IMediaService).
 
-Infrastructure: Handles the heavy lifting with the Windows OS. Contains P/Invoke wrappers (NativeMethods) and the implementation for Windows Media Transport Controls (WindowsMediaService).
+Infrastructure: Handles the heavy lifting with the Windows OS. Contains P/Invoke wrappers (NativeMethods), Windows Media Transport Controls (WindowsMediaService), and registry management (AutorunManager).
 
 UI: Contains the WinForms visual elements, native window styling (WindowEffects), dynamic polling, image color extraction (ImageUtils), and custom Fluent buttons (MainForm, StyledButton).
 
