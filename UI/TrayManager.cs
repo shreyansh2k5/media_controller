@@ -22,7 +22,7 @@ namespace MiniFlyout.UI
                 BackColor = Color.FromArgb(25, 25, 25),
                 ForeColor = Color.White,
                 ShowImageMargin = false,
-                ShowCheckMargin = true // Explicitly enable the checkmark column
+                ShowCheckMargin = true
             };
 
             var autorunItem = new ToolStripMenuItem("Start with Windows")
@@ -35,7 +35,11 @@ namespace MiniFlyout.UI
             var exitItem = new ToolStripMenuItem("Exit MiniFlyout");
             exitItem.Click += (s, e) => 
             {
-                _trayIcon.Visible = false;
+                // Added '?' to safely satisfy the compiler's null-reference warning
+                if (_trayIcon != null)
+                {
+                    _trayIcon.Visible = false;
+                }
                 Application.Exit();
             };
 
@@ -46,7 +50,6 @@ namespace MiniFlyout.UI
             // 2. Initialize the System Tray Icon
             _trayIcon = new NotifyIcon
             {
-                // This automatically extracts whatever icon you apply to your .exe file!
                 Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? Application.ExecutablePath) ?? SystemIcons.Application,
                 ContextMenuStrip = _menu,
                 Text = "MiniFlyout - Media Controller",
