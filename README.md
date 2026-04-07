@@ -48,7 +48,7 @@ Build and Run locally
 
 Clone the repository:
 
-git clone [https://github.com/shreyansh2k5/media_controller.git](https://github.com/shreyansh2k5/media_controller.git)
+git clone [https://github.com/shreyansh2k5/MiniFlyout.git](https://github.com/shreyansh2k5/MiniFlyout.git)
 
 
 Run the project:
